@@ -78,7 +78,8 @@ extern "C" void hkMain() {
                     logen("connected!\n");
                 }
                 tie(err, errno) = socket->send(clientFd, std::span<const u8>(cast<const u8*>(buffer.address()), buffer.size()), 0);
-                logen("\n");
+                if (header.tag == 0)
+                    logen("\n");
                 if (err < 0) {
                     socket->close(clientFd);
                     hk::svc::Break(hk::svc::BreakReason_User, nullptr, errno);
