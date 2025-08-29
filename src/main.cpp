@@ -29,7 +29,7 @@ extern "C" void hkMain() {
     s32 fd = err;
     HK_ABORT_UNLESS(fd >= 0, "fd: %d, errno: %d", fd, errno);
 
-    tie(err, errno) = socket->bind(fd, hk::socket::SocketAddrIpv4::parse<"0.0.0.0">(8008));
+    tie(err, errno) = socket->bind(fd, hk::socket::SocketAddrIpv4::parse<"0.0.0.0">(8000));
     HK_ABORT_UNLESS(err >= 0, "err: %d, errno: %d", err, errno);
 
     tie(err, errno) = socket->listen(fd, 1);
