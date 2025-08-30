@@ -9,7 +9,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          submodules: true
+          submodules: recursive
       - name: Prepare Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
