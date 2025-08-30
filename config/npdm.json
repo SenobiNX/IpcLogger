@@ -1,5 +1,5 @@
 {
-    "name": "Application",
+    "name": "IpcLog",
     "title_id": "@TITLE_ID@",
     "title_id_range_min": "0x0100000000010000",
     "title_id_range_max": "0x01ffffffffffffff",
