@@ -40,3 +40,5 @@ jobs:
             build/*.nss
             build/main.npdm
             build/*.nso
+            build/exefs.nsp
+            toolbox.json
