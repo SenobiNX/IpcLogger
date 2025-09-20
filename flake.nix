@@ -8,20 +8,29 @@
     self,
     nixpkgs,
     flake-utils,
+    fenix,
   }:
     flake-utils.lib.eachDefaultSystem
     (
       system: let
         pkgs = import nixpkgs {
           inherit system;
+          overlays = [
+            fenix.overlays.default
+          ];
         };
         build = import ./sys/nix pkgs;
       in
         with pkgs; rec {
           formatter = pkgs.alejandra;
-          devShells.default = mkShell.override { stdenv = llvmPackages.libcxxStdenv; } {
-            buildInputs = build.dependencies ++ [inetutils];
-            SWITCHTOOLS = "${build.localPackages.switch-tools}/bin";
+          devShells.default = mkShell.override {stdenv = stdenvNoCC;} {
+            buildInputs =
+              build.dependencies
+              ++ [
+                inetutils
+              ];
+            CC = "clang";
+            CXX = "clang++";
           };
         }
     );
