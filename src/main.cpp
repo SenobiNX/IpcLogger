@@ -1,21 +1,7 @@
-#include "hk/diag/diag.h"
 #include "hk/os/Thread.h"
 #include "hk/services/sm.h"
-#include "hk/services/socket/address.h"
-#include "hk/services/socket/config.h"
 #include "hk/services/socket/service.h"
-#include "hk/sf/hipc.h"
-#include "hk/svc/api.h"
-#include "hk/svc/types.h"
-#include "hk/types.h"
-#include "hk/util/FixedVec.h"
-#include "hk/util/Queue.h"
-#include "hk/util/Storage.h"
-#include "hk/util/Stream.h"
-#include "hk/util/Tuple.h"
-#include "hk/util/Vec.h"
 #include <atomic>
-#include <cstdio>
 
 constexpr hk::socket::ServiceConfig cConfig = hk::socket::ServiceConfig {
     .udpTxBufSize = 0,
@@ -77,7 +63,7 @@ extern "C" void hkMain() {
 
     auto* socket = HK_UNWRAP(hk::socket::Socket::initialize<"bsd:s">(cConfig, buffer));
     hk::os::Thread thread(socketThread, socket, 0, 4_KB);
-    thread.setName("SocketThread");
+    thread.setName("SocketServer");
     thread.start();
 
     std::array<u8, 28> data = {};
