@@ -21,8 +21,8 @@
         };
         build = import ./sys/nix pkgs;
       in
-        with pkgs; rec {
-          formatter = pkgs.alejandra;
+        with pkgs; {
+          formatter = pkgs.nixfmt-tree;
           devShells.default = mkShell.override {stdenv = stdenvNoCC;} {
             buildInputs =
               build.dependencies
