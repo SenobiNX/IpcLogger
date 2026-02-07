@@ -14,17 +14,19 @@
 #include "hk/util/Stream.h"
 #include "hk/util/Tuple.h"
 #include "hk/util/Vec.h"
+#include <atomic>
 #include <cstdio>
 
-constexpr hk::socket::ServiceConfig cConfig;
-alignas(hk::cPageSize) u8 buffer[cConfig.calcTransferMemorySize() + 0x20000];
+constexpr hk::socket::ServiceConfig cConfig = hk::socket::ServiceConfig {
+    .udpTxBufSize = 0,
+    .udpRxBufSize = 0,
+    .sbEfficiency = 4,
+};
+alignas(hk::cPageSize) u8 buffer[cConfig.calcTransferMemorySize()];
+static std::atomic<s32> clientFd = -1;
 
-using LogQueue = hk::util::Queue<hk::Tuple<std::span<const u8>, bool>>;
-
-static void socketThread(LogQueue* queue) {
-    auto* socket = HK_UNWRAP(hk::socket::Socket::initialize(cConfig, buffer));
-
-    auto [err, errno] = HK_UNWRAP(socket->socket(hk::socket::AddressFamily::Ipv4, hk::socket::Type::Stream, hk::socket::Protocol(0)));
+static void socketThread(hk::socket::Socket* socket) {
+    auto [err, errno] = HK_UNWRAP(socket->socket(hk::socket::AddressFamily::Ipv4, hk::socket::Type::Stream, hk::socket::Protocol(6)));
 
     s32 fd = err;
     HK_ABORT_UNLESS(fd >= 0, "fd: %d, errno: %d", fd, errno);
@@ -35,29 +37,30 @@ static void socketThread(LogQueue* queue) {
     tie(err, errno) = socket->listen(fd, 1);
     HK_ABORT_UNLESS(err >= 0, "err: %d, errno: %d", err, errno);
 
+    s32 cfd = -1;
     while (true) {
-        s32 clientFd = -1;
         hk::socket::SocketAddrIpv4 client;
-        tie(clientFd, errno, client) = HK_UNWRAP(socket->accept(fd));
-        HK_ABORT_UNLESS(clientFd >= 0, "clientFd: %d, errno: %d", clientFd, errno);
 
-        const auto log = [&](const char* message) {
-            tie(err, errno) = HK_UNWRAP(socket->send(clientFd, std::span<const u8>(cast<const u8*>(message), strlen(message)), 0));
-            if (err < 0)
-                clientFd = 0;
-        };
+        tie(cfd, errno, client) = HK_UNWRAP(socket->accept(fd));
+        HK_ABORT_UNLESS(cfd >= 0, "cfd: %d, errno: %d", cfd, errno);
 
-        log("hi\n");
+        int old = clientFd.exchange(cfd, std::memory_order_relaxed);
 
-        while (clientFd) {
-            auto [msg, shouldNewline] = queue->take();
+        tie(err, errno) = HK_UNWRAP(socket->send<const char>(cfd, "Connected!\n\n", 0));
+        HK_ABORT_UNLESS(err >= 0, "err: %d, errno: %d", err, errno);
 
-            tie(err, errno) = HK_UNWRAP(socket->send(clientFd, msg, 0));
-            if (shouldNewline)
-                log("\n");
+        do {
+            // send a nul byte until the client disconnects.
+            // why aren't we polling for hang-up or recving until done?
+            // that's because with the current code, the client socket is treated
+            // as though its read half of the stream has ended. i'm not sure why
+            // this happens, but i don't care to find out anymore.
+            std::array<u8, 1> buffer = {};
+            tie(err, errno) = HK_UNWRAP(socket->send<u8>(cfd, buffer, 0));
+            hk::svc::SleepThread(500_ms);
+        } while (err >= 0);
 
-            delete[] msg.data();
-        }
+        HK_UNWRAP(socket->close(cfd));
     }
 }
 
@@ -70,10 +73,10 @@ extern "C" void hkMain() {
     // make sure to remove if it was left open
     hk::svc::ManageNamedPort(&port, "hklog", 0);
 
-    HK_ABORT_UNLESS_R(hk::svc::ManageNamedPort(&port, "hklog", 1));
+    HK_ABORT_UNLESS_R(hk::svc::ManageNamedPort(&port, "hklog", cMaxSessions));
 
-    LogQueue queue;
-    hk::os::Thread thread(socketThread, &queue, 0, 8_KB);
+    auto* socket = HK_UNWRAP(hk::socket::Socket::initialize<"bsd:s">(cConfig, buffer));
+    hk::os::Thread thread(socketThread, socket, 0, 4_KB);
     thread.setName("SocketThread");
     thread.start();
 
@@ -108,22 +111,22 @@ extern "C" void hkMain() {
                 }
 
                 auto buffer = stream.read<hk::sf::hipc::Buffer>();
-                stream.seek(0);
 
-                u8* msg = new u8[buffer.size()];
-                while (msg == nullptr) {
-                    while (!queue.empty())
-                        delete[] queue.take().a.data();
-                    msg = new u8[buffer.size()];
+                s32 fd = clientFd.load(std::memory_order_relaxed);
+                HK_UNWRAP(socket->send(fd, buffer.span<const u8>(), 0));
+
+                bool shouldNewline = header.tag == 0;
+                if (shouldNewline) {
+                    std::array<const char, 1> newline = { '\n' };
+                    HK_UNWRAP(socket->send<char>(fd, newline, 0));
                 }
 
-                memcpy(msg, cast<const void*>(buffer.address()), buffer.size());
-                queue.add({ { msg, buffer.size() }, header.tag == 0 });
-
+                stream.seek(0);
                 stream.write(hk::sf::hipc::Header { .tag = 0, .dataWords = 4 });
                 break;
             }
             case 2: {
+                s32 fd = clientFd.load(std::memory_order_relaxed);
                 auto session = HK_UNWRAP(hk::svc::CreateSession(false, 0x40040880));
                 handles.add(session.server);
                 stream.seek(0);

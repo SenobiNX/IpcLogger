@@ -16,7 +16,7 @@
         "permissions": "0xffffffffffffffff"
     },
     "service_access": [
-        "bsd:u"
+        "bsd:s"
     ],
     "service_host": [],
     "kernel_capabilities": [
@@ -81,6 +81,7 @@
                 "WaitForAddress": "0x34",
                 "SignalToAddress": "0x35",
                 "SynchronizePreemptionState": "0x36",
+                "CreateSession": "0x40",
                 "AcceptSession": "0x41",
                 "ReplyAndReceive": "0x43",
                 "CreateEvent": "0x45",
